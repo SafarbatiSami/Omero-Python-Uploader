@@ -183,30 +183,43 @@ def main(argv):
     parser.add_argument('--wait', type=int, default=-1, help=(
         'Wait for this number of seconds for each import to complete. '
         '0: return immediately, -1: wait indefinitely (default)'))
-    parser.add_argument('path', nargs='+', help='Files or directories')
+    parser.add_argument('path', help='Files or directories')
+    parser.add_argument('--username',
+        help="User name")
+    parser.add_argument('--password',
+        help="Password")
+    parser.add_argument('--hostname',
+        help="Host name")
     args = parser.parse_args(argv)
-
+    
+    os.system('omero login -u {} -w {} -s {} '.format(args.username,args.password,args.hostname))
+    
     with cli_login() as cli:
         conn = BlitzGateway(client_obj=cli._client)
         if args.dataset and not conn.getObject('Dataset', args.dataset):
             print ('Dataset id not found: %s' % args.dataset)
             sys.exit(1)
+        directory_path =str(args.path)    
+        filees = get_files_for_fileset(directory_path)
+        for fs_path in filees:
+                print ('Importing: %s' % fs_path)
+                rsp = full_import(cli._client, fs_path, args.wait)
+                if rsp:
+                    links = []
+                    for p in rsp.pixels:
+                        print ('Imported Image ID: %d' % p.image.id.val)
+                        if args.dataset:
+                            link = omero.model.DatasetImageLinkI()
+                            link.parent = omero.model.DatasetI(args.dataset, False)
+                            link.child = omero.model.ImageI(p.image.id.val, False)
+                            links.append(link)
+                    conn.getUpdateService().saveArray(links, conn.SERVICE_OPTS)
 
-        for fs_path in args.path:
-            print ('Importing: %s' % fs_path)
-            rsp = full_import(cli._client, fs_path, args.wait)
-
-            if rsp:
-                links = []
-                for p in rsp.pixels:
-                    print ('Imported Image ID: %d' % p.image.id.val)
-                    if args.dataset:
-                        link = omero.model.DatasetImageLinkI()
-                        link.parent = omero.model.DatasetI(args.dataset, False)
-                        link.child = omero.model.ImageI(p.image.id.val, False)
-                        links.append(link)
-                conn.getUpdateService().saveArray(links, conn.SERVICE_OPTS)
-
-
+    os.system('omero logout')
 if __name__ == '__main__':
     main(sys.argv[1:])
+
+    """
+    Modified it to do datasets, wasn't working
+    Added option to create new client for omero 
+    """
